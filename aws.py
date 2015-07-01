@@ -72,7 +72,7 @@ def launch_instance(ec2, security_group_name):
     Instance ready!
     IP: %s
     Connection string:
-    ssh -i ~/Downloads/%s.pem ec2-user@%s
+    ssh -i ~/.aws/%s-saopaulo.pem ec2-user@%s
     ''' % (server.ip_address, key, server.dns_name)  
 
 
