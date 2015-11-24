@@ -2,17 +2,63 @@
 - hosts: ec2
   remote_user: ec2-user
   vars:
-    ansible_ssh_private_key_file: ~/.aws/rafaelNunes-saopaulo.pem
-    host_key_checking: false  
+    # i.e.: convert "220.240.229.121 43649 22" to "220.240.229.121/32"
+    source_ip_dyn: "{{ ansible_env['SSH_CLIENT'] | regex_replace('^([0-2]{0,1}[0-9]{1,2}\\.[0-2]{0,1}[0-9]{1,2}\\.[0-2]{0,1}[0-9]{1,2}\\.[0-2]{0,1}[0-9]{1,2}).*', '\\\\1/32') }}"
+
+    # you can statically define the source CIDRs to be allowed on proxy
+    # on management machine, set SOURCE_CIDRS variable
+    # comma separated list of CIDRs:
+    # export SOURCE_CIDRS=72.14.192.0/18,209.85.128.0/17
+    source_ips_static: "{{ lookup('env', 'SOURCE_CIDRS') }}"
+
+    # define value for var used on squid.conf template
+    source_ips: "{{ source_ips_static.split(',') | default(source_ip_dyn) }}"
+
+    ansible_ssh_private_key_file: "{{ lookup('env', 'AWS_KEY_FILE') }}"
+    host_key_checking: false
+
   tasks:
-  - name: "Install Squid"
-    yum: name=squid state=present
-    sudo: yes
+    - name: search if static source IP config is present
+      set_fact:
+        source_ips: "{{ source_ips_static.split(',') }}"
+      when: source_ips_static != ''
 
-  - name: "Config to allow all"
-    lineinfile: "dest=/etc/squid/squid.conf state=present regexp='^http_access deny all' line='http_access allow all'"
-    sudo: yes
+    - name: uses dynamic source IP config if static config isn't present
+      set_fact:
+        source_ips: ["{{ source_ip_dyn }}"]
+      when: source_ips_static == ''
 
-  - name: "Start Squid"
-    service: name=squid state=started
-    sudo: yes
+    - name: install squid
+      yum: name=squid state=present
+      sudo: yes
+
+    - name: start squid
+      service: name=squid state=started
+      sudo: yes
+
+    - name: config to allow traffic from your source address
+      template: src=squid_templates/squid.conf.j2 dest=/etc/squid/squid.conf
+      notify:
+        - reload squid
+      sudo: yes
+
+    - name: config custom error message (give less server info away)
+      template: src=squid_templates/squid_error_message.html dest=/etc/squid/ERR_ACCESS_DENIED
+      notify:
+        - reload squid
+      sudo: yes
+
+    - name: "Disable sshd DNS reverse lookup"
+      lineinfile: dest=/etc/ssh/sshd_config regexp='^#*UseDNS yes' line='UseDNS no' backrefs=yes backup=yes
+      notify:
+        - reload sshd
+      sudo: yes
+
+  handlers:
+    - name: reload squid 
+      service: name=squid state=reloaded
+      sudo: yes
+
+    - name: reload sshd
+      service: name=sshd state=reloaded
+      sudo: yes

@@ -505,7 +505,7 @@ class Ec2Inventory(object):
         else:
             errors.append(' - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment vars found but may not be correct')
 
-        boto_paths = ['/etc/boto.cfg', '~/.boto', '~/.aws/credentials']
+        boto_paths = ['/etc/boto.cfg', '~/.boto']
         boto_config_found = list(p for p in boto_paths if os.path.isfile(os.path.expanduser(p)))
         if len(boto_config_found) > 0:
             errors.append(" - Boto configs found at '%s', but the credentials contained may not be correct" % ', '.join(boto_config_found))
